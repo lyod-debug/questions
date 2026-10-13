@@ -1,93 +1,239 @@
-# 24 — FINAL TO-DO: what to run, what to ask, which files you need (Oct 13, 2026)
+# 24 — OPEN QUESTIONS, ISSUES AND ALL QUERIES TO RUN (latest, Oct 13 night, version 4)
 
-Nothing here was executed on SQL Server. Counts come from the queries named below. Source of every question: file 21 (id in brackets).
+Nothing was executed on SQL Server. Names used here are the NEW names (see 00_RUN_ORDER_with_EXEC_commands.sql).
+Queries: the complete text of file `08_validation_queries_payments_motor.sql` is copied at the END of this document (section 6): Part 1 = data checks Q1-Q46, Part 2 = validation V1-V9c, V2e, V10, V10b. Typelist queries: separate file `14_typelist_queries_payments_motor.sql`.
+Question ids (N-, BA-, S-) point to the scenario text in file 21.
 
-## PART 1 — Which files you actually need
-| Keep and use | Why |
-|---|---|
-| `00_DDL_payment_tables_motor.sql` | creates the IS payment tables (run first) |
-| `01`, `01b`, `02`, `03`, `04`, `05`, `06`, `07` procs | the payment load |
-| `usp_Load_IS_CLAIMCONTACTROLE_ALL_FIXES_motor_and_hh_v7.sql` | roles, including `checkpayee` (step 5B) |
-| `08_validation_queries_payments_motor.sql` | run AFTER the procs |
-| `09_data_check_queries_payments_motor.sql` | run BEFORE and AFTER (only the queries listed in Part 3) |
-| `14_typelist_queries_payments_motor.sql` | only T0c and T0d |
-| `15_final_insert_templates_payments_motor.sql` | later, for the CCST inserts |
-| `21_questions_for_BA_and_senior_with_scenarios.md` | scenario text for each question (reference) |
-| This file (24) | the list |
-
-All other files (10, 11, 12, 13, 16, 17, 18, 19, 20, 22, 23) are background and history. You do not need them to finish. Read file 21 only for the question you are asking.
-
-## PART 2 — What you do besides running the procs
-1. Run order: contact procs, claim contact, exposure, reserve line, senior's reserve/recovery coding procs, then `01`, `01b`, `02`–`07`, then role proc v7, then `08` and `09`.
-2. Send me the first error you get.
-3. Send me the real `ccst_*` table structures (check, checkpayee, transaction, transactionlineitem, transactionset, contact, address, claimcontact). I need them for the final inserts. The final inserts must UNION the real contact, address and claim contact tables with `IS_PAYEE_CONTACT_PAY_MOTOR`, `IS_PAYEE_ADDRESS_PAY_MOTOR`, `IS_PAYEE_CLAIMCONTACT_PAY_MOTOR`. No UNION for roles.
-4. Check the dummy payee columns not filled by `01b`: `ContactProhibited`, `BatchGeocode`, `GeocodeStatus`, `ObfuscatedInternal`, `Country`, `AddressType`. If they are NOT NULL in CCST, the final insert supplies a value (BA/senior decides which).
-5. Check that `PartyNumber` (mapping row 142) is produced somewhere. No proc fills it.
-6. Check whether `cc_contact.Name` accepts more than 60 characters (the dummy name is not cut).
-7. Confirm the exposure/reserve line procs of the senior ran BEFORE `01` (the master proc reads them).
-
-## PART 3 — Queries to run (file, query, what the result means)
-### 3A. BEFORE running `01` (file 09, run in the IS layer / SourceStaging as the header of each query says)
-| Query | Question it answers |
-|---|---|
-| Q2 | V2 payments with no dissection row (BA-6) |
-| Q8 | payments mixing hire codes and normal codes (N-8, N-13c) |
-| Q11, Q11c, Q45 | credits per kind of CASE; claim-level credits with no recovery line (BA-1, N-17, S-A) |
-| Q15 | several PAID / PRESENTED / CANX rows (BA-10) |
-| Q19, Q35 | transfer payments `PAY_TYPE = 'T'` (BA-4) |
-| Q28 | in-flight payments the eligibility work should have held back |
-| Q30 | codes only known for TP that appear on AD / claim-level / PA CASES (N-1, decided, for information) |
-| Q31, Q32, Q33 | AD / PA / TP CASE without an exposure (N-2, N-3, N-4) |
-| Q37 | codes Robo/Confluence wants at claim level (N-5) |
-| Q40, Q41 | empty dissection codes; credits with a hire code (N-13b) |
-| Q43 | evidence for the S4 "who wins" ordering (N-8-style lookup contradictions) |
-### 3B. AFTER running `01` (file 09)
-| Query | Question it answers |
-|---|---|
-| Q21, Q22 | master rows by first problem; split transactions with a problem on only some rows |
-| Q36 | master rows with no cost type |
-| Q42 | hire code but no hire exposure (expect 0) |
-| Q44 | dummy payees by reason |
-| Q46 | `PAYEE_CONTACT_OTHER_CLAIM` / `PAYEE_NO_CLAIMCONTACT` (N-18) |
-| `SELECT * FROM IS_PAYMENT_MASTER_MOTOR WHERE ExceptionCode = 'MULTIPLE_RESERVE_LINES'` | two reserve lines in one slot (N-10 senior) |
-| `SELECT * FROM IS_PAYMENT_MASTER_MOTOR WHERE WarnList LIKE '%DISS_SUM_MISMATCH%'` | total differs from sum of dissections (N-12) |
-### 3C. AFTER all procs (file 08)
-V1 (duplicate PublicIDs), V2 / V2b / V2c / V2d (missing parents, check payee role rows, all expected 0 rows), V3 (cardinality), V4, V5 (money), V6 (coverage), V7, V8, V9 / V9b / V9c (typecodes).
-### 3D. File 14
-T0c and T0d: typelist rows with NULL `[Household/Motor/Both]` or NULL `Vectus_TypeCode`.
-
-## PART 4 — Questions for the BA (ask in this order)
-| # | Question (id) | Query |
+## 1. What you do besides running the procs
+| # | What | How / query |
 |---|---|---|
-| 1 | One V2 payment that has both claim cost and expense dissections becomes 2 ClaimCenter payments. (a) Is it correct that both get the same check number `TRANS_REF`? (b) Mapping row 174 says no need to split, transcript line 56 says clone. Which one? (N-8) | Q8, Q22 |
-| 2 | `DoesNotErodeReserves`: TRUE or FALSE? Built as TRUE. (N-9) | none |
-| 3 | A credit on the claim itself (CASE KEY = CLAIM KEY) has no recovery reserve line. What should happen? (BA-1 / N-17; senior part S-A below) | Q11c, Q45 |
-| 4 | Transfer payments (`PAY_TYPE = 'T'`): which side carries which field? (BA-4) | Q19, Q35 |
-| 5 | V2 payment with no dissection row: one line, claim cost. Right? (BA-6) | Q2 |
-| 6 | Several PAID / PRESENTED / CANX status rows: built = latest by status `ID`. Right? (BA-10) | Q15 |
-| 7 | PA recoveries are not migrated (mapping row 136). Confirm, or where do they go? (BA-15) | Q11 |
-| 8 | Recovery coding: per recovery payment or per recovery reserve line? Built = per reserve line, reused. (BA-9) | none |
-| 9 | AD CASE without an AD exposure / PA CASE without PA exposure / TP CASE without TP exposure: create the exposure, send to claim level, or leave as load error? (N-2, N-3, N-4) | Q31, Q32, Q33 |
-| 10 | Is the Confluence rule (codes EXG, GOO, ISR, OLR ... at claim level; credit cost type by code) current? Mapping says the CASE decides. (N-5, N-6) | Q37, Q36 |
-| 11 | Dummy payee when the link row exists but has no CONTACT RECORD, or the CONTACT RECORD is not in the contact master: dummy payee + exception report (done). Confirm. And what for a contact that exists only on another claim, or has no claim contact row? (N-11, N-18) | Q17, Q44, Q46 |
-| 12 | Payment total differs from the sum of dissections: line items carry the dissection amounts. Right? (N-12) | DISS_SUM_MISMATCH query |
-| 13 | `checkpayee` role: one role row per payee and exposure (built), or one per payee for the whole claim? `Active` = 1 real payee, 0 dummy payee. (N-15) | none |
-| 14 | Hire: any credit with a hire code goes to the vehicle/property/injury recovery line (never hire). Right? (N-13b) | Q41 |
-| 15 | Open injury where the type 33 expense reserve is 0 but an expense payment exists: should an expense line be created? (N-20a / S-D) | Q12 |
-| 16 | Missing rows 202, 204, 205, 207, 212 in the main reserve line file: confirm they are not payment rows. | none |
-| 17 | Lookup rows missing for TP-only codes on non-TP CASES (N-1): code rule is built; do you want the rows added to the lookup instead? | Q30 |
+| T1 | Run the procs in the order of `00_RUN_ORDER_with_EXEC_commands.sql` and send me the FIRST error | EXEC list in that file |
+| T2 | Compare Part B of the run order (exposure, reserve line, reserve transaction, recovery coding) with your SSIS package | not confirmed by me, read from the tables each proc reads |
+| T3 | Move `usp_Load_IS_CLAIMCONTACTROLE` from after the exposure to the END (Part F) | it needs `IS_PAYMENT_MASTER_MOTOR` (step 5B) |
+| T4 | Drop the OLD objects of earlier names if they exist in DEV: procs `usp_Load_SS_to_IS_PAYMENT_MASTER_MOTOR`, `usp_Load_SS_to_IS_PAYEE_DUMMY_MOTOR`, `usp_Load_SS_to_IS_PAYMENT_EXCEPTION_MOTOR`, `usp_Load_SS_to_IS_TRANSACTION_PAY_MOTOR`, `usp_Load_SS_to_IS_TRANSACTIONLINEITEM_PAY_MOTOR`, `usp_Load_SS_to_IS_TRANSACTIONSET_PAY_MOTOR`, `usp_Load_SS_to_IS_CHECK_MOTOR`, `usp_Load_SS_to_IS_CHECKPAYEE_MOTOR`; tables `IS_PAYEE_ADDRESS_PAY_MOTOR`, `IS_PAYEE_CONTACT_PAY_MOTOR`, `IS_PAYEE_CLAIMCONTACT_PAY_MOTOR`; and the tables `IS_CHECK` and `IS_CHECKPAYEE` ONLY if they were created by my old DDL (they are your main tables now, do not drop them if they are yours) | otherwise two copies exist |
+| T4b | Paste the five insert blocks of file `15_final_insert_blocks_to_paste_into_main_IS_procs.sql` at the end of your main procs `usp_Load_SS_to_IS_TRANSACTION`, `_TRANSACTIONSET`, `_TRANSACTIONLINEITEM`, `_CHECK`, `_CHECKPAYEE` (use your real proc names) | file 15 |
+| T4c | Run the main procs AFTER Part C and D of the run order (they read my intermediate payment tables) | `00_RUN_ORDER_with_EXEC_commands.sql` v4 |
+| T4d | Send me the column lists of the main tables `IS_TRANSACTION`, `IS_TRANSACTIONSET`, `IS_TRANSACTIONLINEITEM`, `IS_CHECK`, `IS_CHECKPAYEE` (query in the header of file 15). The column lists of `IS_CHECK` and `IS_CHECKPAYEE` are NOT CONFIRMED | file 15 |
+| T5 | Check that `PartyNumber` (mapping row 142) is filled somewhere | no proc produces it |
+| T6 | Run the queries of section 5 (the complete text is in section 6); send me the results | section 5, 6 |
 
-## PART 5 — Questions for the senior developer
+## 2. Questions for the BA (ask in this order)
 | # | Question | Query |
 |---|---|---|
-| S-A | Create the claim-level recovery line `pm_other_adm` when a credit sits on the claim itself (with BA question 3) | Q45 |
-| S-B | Add an `HDR` token (and `TP_HIRE` if ever needed) to the recovery coding proc; today the recovery PublicID would be NULL for a claim-level line | none |
-| S-C | `LUWID` is NULL on TP vehicle (B5) and reinsurance (B6) reserve lines: intended? | none |
-| S-E | Create the AD recovery line when a removed AD CASE of the claim has a credit (my proc moves it to the surviving AD CASE) | Q10, Q11b |
-| S-F | Confirm every TP CASE with one of the 12 hire codes always gets a `TP_HIRE` exposure | Q42 |
-| S-G | Send the remaining rows (28+) of `MOTOR_RESERVES_LOOKUP`; run `INFORMATION_SCHEMA.COLUMNS` on the real contact/address/claim contact tables | none |
-| N-10 | Which line is right if two reserve lines exist in one slot, or should the reserve proc never make two | MULTIPLE_RESERVE_LINES query |
-| N-10 old | recovery category text on the property recovery line | none |
+| 1 | One V2 payment with claim cost and expense dissections becomes 2 ClaimCenter payments (N-8): (a) both get the same check number `TRANS_REF`, correct? (b) mapping row 174 says no split, transcript line 56 says clone: which one? | Q8, Q22 |
+| 2 | `DoesNotErodeReserves`: TRUE or FALSE? Built TRUE (N-9) | none |
+| 3 | A credit on the claim itself (CASE KEY = CLAIM KEY) has no recovery reserve line (BA-1 / N-17) | Q11c, Q45 |
+| 4 | Transfer payments `PAY_TYPE = 'T'`: which side carries which field (BA-4) | Q19, Q35 |
+| 5 | V2 payment with no dissection row: one claim cost line (BA-6) | Q2 |
+| 6 | Several PAID / PRESENTED / CANX status rows: latest by status `ID` (BA-10) | Q15 |
+| 7 | PA recoveries are not migrated (mapping row 136): confirm, or where do they go (BA-15) | Q11 |
+| 8 | Recovery coding: per recovery payment or per recovery reserve line; built per reserve line (BA-9) | none |
+| 9 | AD / PA / TP CASE without an exposure: create it, claim level, or load error (N-2, N-3, N-4) | Q31, Q32, Q33 |
+| 10 | Confluence rule (codes at claim level, credit cost type by code) versus the mapping (N-5, N-6) | Q37, Q36 |
+| 11 | Dummy payee for a link without CONTACT RECORD or a CONTACT RECORD not in the contact master: dummy payee + exception report (done); and what for a payee that exists only on another claim, or has no claim contact row (N-11, N-18) | Q17, Q44, Q46 |
+| 12 | Payment total differs from the sum of its dissections: line items carry the dissection amounts (N-12) | `WarnList LIKE '%DISS_SUM_MISMATCH%'` |
+| 13 | `checkpayee` role: one row per payee and exposure (built) or per payee for the claim; `Active` 1 real payee, 0 dummy payee (N-15) | none |
+| 14 | A credit with a hire code goes to the vehicle / property / injury recovery line (N-13b) | Q41 |
+| 15 | Open injury with the type 33 expense reserve 0 but an expense payment exists (N-20a / S-D) | Q12 |
+| 16 | Rows 202, 204, 205, 207, 212 are missing from the main reserve line file: not payment rows? | none |
+| 17 | TP-only codes on non-TP CASES: code rule (built) or add lookup rows (N-1) | Q30 |
+| 18 | `PayTo` for a company payee: NULL (mapping literal, built) or the company name; switch `@PayToCompanyFallback` in `usp_Load_IS_CHECK_MOTOR` (BA question 27) | Q17d |
 
-## PART 6 — Decided already (do NOT ask again)
-Vehicle, then property, then injury (BA-13, main reserve line column). Hire expense, `_hireexp` removed. TP-only code on a non-TP CASE uses the TP row with `IsHire` = 0 (N-1). `LineCategory` hard coded 'Migrated Payment' / 'Migrated Recovery'. `TRANS_REF` trimmed (kept). `UNMAPPED_PAYMENT_METHOD` only when `PayType` is not null (kept). Stop reason defaults to `issued_in_error` (mapping row 19). `PayeeDenormID` / `PayToDenorm` not loaded. `checkpayee` role is in role proc v7 step 5B. PA recoveries are the only rows not copied.
+## 3. Questions for the senior developer
+| # | Question | Query |
+|---|---|---|
+| S-A | Create the claim-level recovery line `pm_other_adm` when a credit sits on the claim itself | Q45 |
+| S-B | Add an `HDR` token (and `TP_HIRE` if ever needed) to the recovery coding proc (PublicID would be NULL) | none |
+| S-C | `LUWID` is NULL on TP vehicle (B5) and reinsurance (B6) reserve lines: intended? | none |
+| S-E | Create the AD recovery line when a removed AD CASE of the claim has a credit | Q10, Q11b |
+| S-F | Confirm every TP CASE with one of the 12 hire codes always gets `TP_HIRE` | Q42 |
+| S-G | Send rows 28+ of `MOTOR_RESERVES_LOOKUP` | none |
+| N-10 | Two reserve lines in one slot: which is right | `ExceptionCode = 'MULTIPLE_RESERVE_LINES'` |
+| N-10b | Recovery category text on the property recovery line | none |
+| S-H | Confirm the constants of the dummy payee contact (`UnknownFlagVisible` 1, `Injured_Adm` 'No', the 0 flags), copied from `usp_Load_IS_CONTACT_MASTER_MOTOR` | none |
+
+## 4. Resolved (do not ask again)
+Vehicle, then property, then injury. Hire expense (`_hireexp` removed). TP-only code on a non-TP CASE uses the TP row with `IsHire` 0. `LineCategory` hard coded. `TRANS_REF` trimmed. `UNMAPPED_PAYMENT_METHOD` only when `PayType` is not null. Stop reason default `issued_in_error`. `PayeeDenormID` / `PayToDenorm` not loaded. `checkpayee` role is in role proc v7 step 5B. Dummy payee name and address cut to the IS sizes (60). Dummy payees reach `IS_ADDRESS`, `IS_CONTACT`, `IS_CLAIMCONTACT` through the three `..._DUMMY_PAYEE_MOTOR` append procs. CCST structures are not needed. PA recoveries are the only rows not copied.
+
+## 5. WHICH QUERIES TO RUN, AND WHEN (ids are the headings in section 6)
+First run the temp table statement at the very top of Part 1 (`#PT`) in the same session as the Q queries that read it. Send me the first 20 rows of each result.
+| When | Queries | Why |
+|---|---|---|
+| 1. BEFORE any payment proc (read Vectus data only) | Q2, Q8, Q11, Q11c, Q15, Q19, Q28, Q30, Q31, Q32, Q33, Q35, Q37, Q40, Q41, Q43, Q45 | counts for the BA and senior questions of section 2 and 3 |
+| 2. AFTER `usp_Load_IS_PAYMENT_MASTER_MOTOR` | Q21, Q22, Q36, Q42, Q44, Q46 | exceptions per row, splits, dummy payee reasons, payee problems |
+| 3. AFTER Part C and D (intermediate payment procs and the dummy payee append procs) | V1, V2, V2b, V2c, V3, V4, V5, V6, V7, V8, V9, V9b, V9c, V2e | structure of my tables (V1, V3, V2b, V2e must return 0 rows), money (V5), coverage (V6) |
+| 4. AFTER the five main procs with the file 15 blocks | V10, V10b | my rows reached the main tables (0 rows expected); no duplicate PublicID in the main tables |
+| 5. AFTER `usp_Load_IS_CLAIMCONTACTROLE` | V2d | `checkpayee` role rows (0 rows expected) |
+| 6. Typelists | file 14: T0c, T0d | rows with NULL `[Household/Motor/Both]` or NULL `Vectus_TypeCode` |
+
+## 6. COMPLETE TEXT OF `08_validation_queries_payments_motor.sql` (identical to the file)
+```sql
+/* =====================================================================================
+   08_validation_queries_payments_motor.sql   (ONE file for all validation and data check queries; typelist queries are in file 14)
+   READ-ONLY queries. Run them one by one (select the block of one query and run it). Not executed on SQL Server by me.
+   PART 1 = data checks Q1 to Q46 (old file 09). Most can run BEFORE the payment procs (they read Vectus data).
+            Marked "After running proc" = run them AFTER usp_Load_IS_PAYMENT_MASTER_MOTOR (Q21, Q22, Q36, Q42, Q44, Q46).
+            PART 1 starts with a temp table #PT: run that first statement in the same session as the queries that use it.
+   PART 2 = validation V1 to V9c, V2e, V10, V10b (V10 and V10b need the five main procs). Run AFTER all payment procs and the dummy payee procs (see 00_RUN_ORDER_with_EXEC_commands.sql).
+            V1, V3 and the dummy payee checks V2b and V2e must return ZERO rows.
+            V2 lists foreign keys that point nowhere: such rows are EXPECTED while a reserve line, recovery coding, payee or claim contact
+            is missing. Match each row with its ExceptionCode in IS_PAYMENT_EXCEPTION_MOTOR. Queries marked "report" are information.
+   The MAIN queries to run are listed in 24_FINAL_TODO_open_questions_and_checks.md.
+   ===================================================================================== */
+USE [IntermediateStaging_DEV];
+
+/* ################################ PART 1: DATA CHECKS (Q1 - Q46) ################################ */
+/* -------------------------------------------------------------------------------------
+   A. A reusable view of "Motor payments with their case type" (temp table for this session)
+   ------------------------------------------------------------------------------------- */
+IF OBJECT_ID('tempdb..#PT') IS NOT NULL DROP TABLE #PT;
+SELECT PT.ID AS TranID, PT.CASEID, CLM.GW_HDR_CASEID, CLM.CLAIM_REF, UPPER(LTRIM(RTRIM(PT.DEBIT_CREDIT))) AS DC
+     , PT.AMOUNT, LTRIM(RTRIM(PT.PAY_TYPE)) AS PAY_TYPE, PT.PAYEE_LINKID, PT.ADD_LINKID, PT.PAYEE_NAME
+     , PT.ADDRESS_LINE1, PT.ADDRESS_LINE2, PT.ADDRESS_LINE3, PT.POST_CODE
+     , CASE WHEN PT.CASEID = CLM.GW_HDR_CASEID THEN 'HDR'
+            WHEN AD.ID IS NOT NULL THEN 'AD'
+            WHEN TP.ID IS NOT NULL THEN 'TP'
+            WHEN PA.ID IS NOT NULL THEN 'PA'
+            ELSE 'UNKNOWN' END AS CaseType
+INTO #PT
+FROM IntermediateStaging_DEV.dbo.IS_CLAIM_MASTER CLM
+INNER JOIN SourceStaging.VECCASRN.VEC_GW_PAY_TRANS PT ON PT.GW_HDR_CASEID = CLM.GW_HDR_CASEID
+LEFT JOIN SourceStaging.VECCASRN.VEC_GW_MOTOR_AD AD ON AD.ID = PT.CASEID AND AD.GW_HDR_CASEID = CLM.GW_HDR_CASEID
+LEFT JOIN SourceStaging.VECCASRN.VEC_GW_MOTOR_TP TP ON TP.ID = PT.CASEID AND TP.GW_HDR_CASEID = CLM.GW_HDR_CASEID
+LEFT JOIN SourceStaging.VECCASRN.VEC_PA_ANCILLARY PA ON PA.ID = PT.CASEID AND PA.GW_HDR_CASEID = CLM.GW_HDR_CASEID
+WHERE UPPER(LTRIM(RTRIM(CLM.PRODUCT))) = 'MOTOR';
+CREATE UNIQUE CLUSTERED INDEX IX_PT ON #PT (TranID);
+
+/* Q1. How many motor payments / recoveries per case type (the size of each edge case) */
+SELECT CaseType, DC, COUNT(*) AS Trans, SUM(AMOUNT) AS Amount
+FROM #PT GROUP BY CaseType, DC ORDER BY CaseType, DC;
+/* UNKNOWN must be 0. If not: the payment's CASEID is not the claim, nor an AD / TP / PA case of that claim. */
+
+/* Q2. Transactions with NO dissection row at all (my assumption: use the header amount)  -> BA question 6 */
+SELECT P.CaseType, P.DC, COUNT(*) AS Trans, SUM(P.AMOUNT) AS Amount, MIN(P.TranID) AS ExampleTranID
+FROM #PT P
+WHERE NOT EXISTS (SELECT 1 FROM SourceStaging.VECCASRN.VEC_GW_PAY_DISS D WHERE D.GW_PAY_TRAN_ID = P.TranID)
+GROUP BY P.CaseType, P.DC;
+
+/* Q3. Dissection rows with a NULL / blank CODE (BA: map as claimcost) */
+SELECT P.CaseType, P.DC, COUNT(*) AS DissRows, MIN(P.TranID) AS ExampleTranID
+FROM #PT P INNER JOIN SourceStaging.VECCASRN.VEC_GW_PAY_DISS D ON D.GW_PAY_TRAN_ID = P.TranID
+WHERE D.CODE IS NULL OR LTRIM(RTRIM(D.CODE)) = ''
+GROUP BY P.CaseType, P.DC;
+
+/* Q4. Header amount different from the sum of the dissections */
+SELECT TOP 20 P.TranID, P.DC, P.AMOUNT AS HeaderAmount, S.DissSum
+FROM #PT P INNER JOIN (SELECT GW_PAY_TRAN_ID, SUM(AMOUNT) AS DissSum FROM SourceStaging.VECCASRN.VEC_GW_PAY_DISS GROUP BY GW_PAY_TRAN_ID) S
+     ON S.GW_PAY_TRAN_ID = P.TranID
+WHERE ABS(ISNULL(P.AMOUNT,0) - S.DissSum) > 0.005
+ORDER BY P.TranID;
+
+/* Q5. Debit dissection codes that have NO row in the lookup for that kind of case (these become UNMAPPED_DISS_CODE) -> BA question 7 */
+;WITH K AS
+(
+  SELECT CASE WHEN K.DISSECTION_CODE IS NULL OR UPPER(LTRIM(RTRIM(K.DISSECTION_CODE))) IN ('','NULL','<NULL>') THEN '~NULL~' ELSE UPPER(LTRIM(RTRIM(K.DISSECTION_CODE))) END AS CodeKey
+       , CASE WHEN UPPER(REPLACE(LTRIM(RTRIM(K.V2_CASE)),' ','_')) = 'GW_MOTOR_TP' THEN 'TP'
+              WHEN UPPER(REPLACE(LTRIM(RTRIM(K.V2_CASE)),' ','_')) LIKE 'ALL_CASES_APART%' THEN 'NONTP' ELSE 'ALL' END AS VScope
+  FROM SourceStaging.dbo.Lkp_Transaction_Typelist K
+  WHERE LOWER(LTRIM(RTRIM(K.LOB))) = 'motor' AND UPPER(LTRIM(RTRIM(K.DEBIT_CREDIT))) = 'D'
+)
+SELECT P.CaseType, UPPER(LTRIM(RTRIM(D.CODE))) AS DissCode, COUNT(*) AS DissRows, MIN(P.TranID) AS ExampleTranID
+FROM #PT P INNER JOIN SourceStaging.VECCASRN.VEC_GW_PAY_DISS D ON D.GW_PAY_TRAN_ID = P.TranID
+WHERE P.DC = 'D' AND D.CODE IS NOT NULL AND LTRIM(RTRIM(D.CODE)) <> ''
+  AND NOT EXISTS (SELECT 1 FROM K WHERE K.CodeKey = UPPER(LTRIM(RTRIM(D.CODE)))
+                  AND (K.VScope = 'ALL' OR (K.VScope = 'TP' AND P.CaseType = 'TP') OR (K.VScope = 'NONTP' AND P.CaseType <> 'TP')))
+GROUP BY P.CaseType, UPPER(LTRIM(RTRIM(D.CODE)))
+ORDER BY COUNT(*) DESC;
+
+/* Q6. Lookup rows that contradict each other (same code + same scope, different cost type). My proc would silently take the alphabetically first. */
+SELECT UPPER(LTRIM(RTRIM(DISSECTION_CODE))) AS Code, LTRIM(RTRIM(V2_CASE)) AS V2_CASE, COUNT(DISTINCT LOWER(LTRIM(RTRIM(CostTypeCode)))) AS CostTypes, COUNT(*) AS Rws
+FROM SourceStaging.dbo.Lkp_Transaction_Typelist
+WHERE LOWER(LTRIM(RTRIM(LOB))) = 'motor' AND UPPER(LTRIM(RTRIM(DEBIT_CREDIT))) = 'D'
+GROUP BY UPPER(LTRIM(RTRIM(DISSECTION_CODE))), LTRIM(RTRIM(V2_CASE))
+HAVING COUNT(*) > 1;
+
+/* Q7. Split transactions: debit transactions whose dissections map to BOTH claimcost and aoexpense (how many 2-for-1 splits) */
+;WITH K AS
+(
+  SELECT CASE WHEN K.DISSECTION_CODE IS NULL OR UPPER(LTRIM(RTRIM(K.DISSECTION_CODE))) IN ('','NULL','<NULL>') THEN '~NULL~' ELSE UPPER(LTRIM(RTRIM(K.DISSECTION_CODE))) END AS CodeKey
+       , CASE WHEN UPPER(REPLACE(LTRIM(RTRIM(K.V2_CASE)),' ','_')) = 'GW_MOTOR_TP' THEN 'TP'
+              WHEN UPPER(REPLACE(LTRIM(RTRIM(K.V2_CASE)),' ','_')) LIKE 'ALL_CASES_APART%' THEN 'NONTP' ELSE 'ALL' END AS VScope
+       , LOWER(LTRIM(RTRIM(K.CostTypeCode))) AS CostType
+       , CASE WHEN UPPER(LTRIM(RTRIM(K.Exposure))) LIKE 'HIRE%' THEN 1 ELSE 0 END AS IsHire
+  FROM SourceStaging.dbo.Lkp_Transaction_Typelist K
+  WHERE LOWER(LTRIM(RTRIM(K.LOB))) = 'motor' AND UPPER(LTRIM(RTRIM(K.DEBIT_CREDIT))) = 'D'
+),
+L AS
+(
+  SELECT P.TranID, P.CaseType, K.CostType, K.IsHire
+  FROM #PT P
+  INNER JOIN SourceStaging.VECCASRN.VEC_GW_PAY_DISS D ON D.GW_PAY_TRAN_ID = P.TranID
+  INNER JOIN K ON K.CodeKey = CASE WHEN D.CODE IS NULL OR UPPER(LTRIM(RTRIM(D.CODE))) IN ('','NULL','<NULL>') THEN '~NULL~' ELSE UPPER(LTRIM(RTRIM(D.CODE))) END
+             AND (K.VScope = 'ALL' OR (K.VScope = 'TP' AND P.CaseType = 'TP') OR (K.VScope = 'NONTP' AND P.CaseType <> 'TP'))
+  WHERE P.DC = 'D'
+)
+SELECT CaseType
+     , COUNT(*) AS DebitTrans
+     , SUM(CASE WHEN Kinds > 1 THEN 1 ELSE 0 END) AS TransThatSplit
+     , MIN(CASE WHEN Kinds > 1 THEN TranID END) AS ExampleSplitTranID
+FROM (SELECT TranID, CaseType, COUNT(DISTINCT CONCAT(CostType,'|',IsHire)) AS Kinds FROM L GROUP BY TranID, CaseType) X
+GROUP BY CaseType;
+
+/* Q8. Hire & Mobility codes MIXED with normal codes in one TP debit transaction (they go to two different exposures) -> BA question 5 */
+SELECT TOP 20 P.TranID, P.CLAIM_REF, P.CASEID,
+       SUM(CASE WHEN D.CODE IN ('ABA','ABH','ABP','CDW','FSC','OUH','PLH','PLP','RVM','SUB','TEM','TPH') THEN 1 ELSE 0 END) AS HireCodes,
+       SUM(CASE WHEN D.CODE IN ('ABA','ABH','ABP','CDW','FSC','OUH','PLH','PLP','RVM','SUB','TEM','TPH') THEN 0 ELSE 1 END) AS OtherCodes
+FROM #PT P INNER JOIN SourceStaging.VECCASRN.VEC_GW_PAY_DISS D ON D.GW_PAY_TRAN_ID = P.TranID
+WHERE P.CaseType = 'TP' AND P.DC = 'D'
+GROUP BY P.TranID, P.CLAIM_REF, P.CASEID
+HAVING SUM(CASE WHEN D.CODE IN ('ABA','ABH','ABP','CDW','FSC','OUH','PLH','PLP','RVM','SUB','TEM','TPH') THEN 1 ELSE 0 END) > 0
+   AND SUM(CASE WHEN D.CODE IN ('ABA','ABH','ABP','CDW','FSC','OUH','PLH','PLP','RVM','SUB','TEM','TPH') THEN 0 ELSE 1 END) > 0;
+
+/* Q9. TP cases that have vehicle AND injury AND property exposures (mapping does not list VEH/INJ/PRO; I assume vehicle) -> BA question 13 */
+SELECT E.GW_HDR_CASEID, E.VectusCaseID_Adm
+FROM IntermediateStaging_DEV.dbo.IS_EXPOSURE_MOTOR E
+WHERE E.SourceOrigin_Adm IN ('TP_VEH','TP_INJ','TP_PRO')
+GROUP BY E.GW_HDR_CASEID, E.VectusCaseID_Adm
+HAVING COUNT(DISTINCT E.SourceOrigin_Adm) = 3;
+
+/* Q10. AD: claims with more than one AD case; AD payments whose own case has no exposure -> remapped to the surviving AD (mapping row 136 edge case) */
+SELECT AD.GW_HDR_CASEID, COUNT(*) AS AdCases, SUM(CASE WHEN EXISTS (SELECT 1 FROM IntermediateStaging_DEV.dbo.IS_EXPOSURE_MOTOR E WHERE E.SourceOrigin_Adm='AD' AND E.VectusCaseID_Adm = CONVERT(VARCHAR(64),AD.ID)) THEN 1 ELSE 0 END) AS AdWithExposure
+FROM SourceStaging.VECCASRN.VEC_GW_MOTOR_AD AD
+WHERE EXISTS (SELECT 1 FROM IntermediateStaging_DEV.dbo.IS_CLAIM_MASTER C WHERE C.GW_HDR_CASEID = AD.GW_HDR_CASEID AND UPPER(LTRIM(RTRIM(C.PRODUCT))) = 'MOTOR')
+GROUP BY AD.GW_HDR_CASEID HAVING COUNT(*) > 1;
+
+SELECT P.DC, COUNT(*) AS Trans, MIN(P.TranID) AS ExampleTranID
+FROM #PT P
+WHERE P.CaseType = 'AD'
+  AND NOT EXISTS (SELECT 1 FROM IntermediateStaging_DEV.dbo.IS_EXPOSURE_MOTOR E WHERE E.SourceOrigin_Adm='AD' AND E.VectusCaseID_Adm = CONVERT(VARCHAR(64),P.CASEID))
+GROUP BY P.DC;
+
+/* Q11. Credits (recoveries) per case type, and how many have a recovery reserve line available -> BA question 1 / senior question 3 */
+SELECT P.CaseType, COUNT(*) AS Credits, SUM(P.AMOUNT) AS Amount, MIN(P.TranID) AS ExampleTranID
+FROM #PT P WHERE P.DC = 'C' GROUP BY P.CaseType;
+
+/* Q11b. AD credits whose AD case (or the surviving AD case) has no recovery reserve line '_rec' */
+SELECT P.TranID, P.CLAIM_REF, P.CASEID
+FROM #PT P
+WHERE P.DC = 'C' AND P.CaseType = 'AD'
+  AND NOT EXISTS (SELECT 1 FROM IntermediateStaging_DEV.dbo.IS_RESERVELINE_MOTOR R
+                  WHERE R.GW_HDR_CASEID = P.GW_HDR_CASEID AND R.SourceOrigin_Adm = 'AD' AND RIGHT(R.PublicID,4) = '_rec');
+
+/* Q11c. Header-level credits (CASEID = claim): claims that would need the claim-level 'pm_other_adm' recovery line (lookup row 4) */
+SELECT P.GW_HDR_CASEID, P.CLAIM_REF, COUNT(*) AS Credits, SUM(P.AMOUNT) AS Amount, MIN(P.TranID) AS ExampleTranID
+FROM #PT P WHERE P.DC = 'C' AND P.CaseType = 'HDR'
+GROUP BY P.GW_HDR_CASEID, P.CLAIM_REF ORDER BY COUNT(*) DESC;
+
+/* Q12. Injury: debit expense payments that land on a TP injury exposure which has no 'Third Party Solicitors Costs' line  -> BA question 3
+        (run AFTER proc 01: this is the NO_MAIN_INJ_CLAIMCOST_LINE / NO_MAIN_INJ_EXPENSE_LINE list) */
+SELECT TOP 50 TranID, MasterSuffix, GW_HDR_CASEID, CLAIM_REF, CaseID, CostType, MasterAmount, CASE_STATUS
+FROM IntermediateStaging_DEV.dbo.IS_PAYMENT_MASTER_MOTOR
+WHERE ExceptionCode IN ('NO_MAIN_INJ_CLAIMCOST_LINE','NO_MAIN_INJ_EXPENSE_LINE');
+
+/* Q13. Statuses: V2 STATUS_TYPE values in use, and whether the typelist knows them */
+SELECT S.STATUS_TYPE, S.GCURRENT, COUNT(*) AS Rws
+FROM SourceStaging.VECCASRN.VEC_GW_PAY_STATUS S
+INNER JOIN #PT P ON P.TranID = S.GW_PAY_TRAN_ID
+GROUP BY S.STATUS_TYPE, S.GCURRENT ORDER BY S.GCURRENT DESC, COUNT(*) DESC;
+
+/* Q13b. The 5 typelists I read, exactly as stored  -> senior question 1 (how were LifeCycleState / ApprovalStatus keyed?) *
