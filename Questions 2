@@ -1,0 +1,93 @@
+# 24 — FINAL TO-DO: what to run, what to ask, which files you need (Oct 13, 2026)
+
+Nothing here was executed on SQL Server. Counts come from the queries named below. Source of every question: file 21 (id in brackets).
+
+## PART 1 — Which files you actually need
+| Keep and use | Why |
+|---|---|
+| `00_DDL_payment_tables_motor.sql` | creates the IS payment tables (run first) |
+| `01`, `01b`, `02`, `03`, `04`, `05`, `06`, `07` procs | the payment load |
+| `usp_Load_IS_CLAIMCONTACTROLE_ALL_FIXES_motor_and_hh_v7.sql` | roles, including `checkpayee` (step 5B) |
+| `08_validation_queries_payments_motor.sql` | run AFTER the procs |
+| `09_data_check_queries_payments_motor.sql` | run BEFORE and AFTER (only the queries listed in Part 3) |
+| `14_typelist_queries_payments_motor.sql` | only T0c and T0d |
+| `15_final_insert_templates_payments_motor.sql` | later, for the CCST inserts |
+| `21_questions_for_BA_and_senior_with_scenarios.md` | scenario text for each question (reference) |
+| This file (24) | the list |
+
+All other files (10, 11, 12, 13, 16, 17, 18, 19, 20, 22, 23) are background and history. You do not need them to finish. Read file 21 only for the question you are asking.
+
+## PART 2 — What you do besides running the procs
+1. Run order: contact procs, claim contact, exposure, reserve line, senior's reserve/recovery coding procs, then `01`, `01b`, `02`–`07`, then role proc v7, then `08` and `09`.
+2. Send me the first error you get.
+3. Send me the real `ccst_*` table structures (check, checkpayee, transaction, transactionlineitem, transactionset, contact, address, claimcontact). I need them for the final inserts. The final inserts must UNION the real contact, address and claim contact tables with `IS_PAYEE_CONTACT_PAY_MOTOR`, `IS_PAYEE_ADDRESS_PAY_MOTOR`, `IS_PAYEE_CLAIMCONTACT_PAY_MOTOR`. No UNION for roles.
+4. Check the dummy payee columns not filled by `01b`: `ContactProhibited`, `BatchGeocode`, `GeocodeStatus`, `ObfuscatedInternal`, `Country`, `AddressType`. If they are NOT NULL in CCST, the final insert supplies a value (BA/senior decides which).
+5. Check that `PartyNumber` (mapping row 142) is produced somewhere. No proc fills it.
+6. Check whether `cc_contact.Name` accepts more than 60 characters (the dummy name is not cut).
+7. Confirm the exposure/reserve line procs of the senior ran BEFORE `01` (the master proc reads them).
+
+## PART 3 — Queries to run (file, query, what the result means)
+### 3A. BEFORE running `01` (file 09, run in the IS layer / SourceStaging as the header of each query says)
+| Query | Question it answers |
+|---|---|
+| Q2 | V2 payments with no dissection row (BA-6) |
+| Q8 | payments mixing hire codes and normal codes (N-8, N-13c) |
+| Q11, Q11c, Q45 | credits per kind of CASE; claim-level credits with no recovery line (BA-1, N-17, S-A) |
+| Q15 | several PAID / PRESENTED / CANX rows (BA-10) |
+| Q19, Q35 | transfer payments `PAY_TYPE = 'T'` (BA-4) |
+| Q28 | in-flight payments the eligibility work should have held back |
+| Q30 | codes only known for TP that appear on AD / claim-level / PA CASES (N-1, decided, for information) |
+| Q31, Q32, Q33 | AD / PA / TP CASE without an exposure (N-2, N-3, N-4) |
+| Q37 | codes Robo/Confluence wants at claim level (N-5) |
+| Q40, Q41 | empty dissection codes; credits with a hire code (N-13b) |
+| Q43 | evidence for the S4 "who wins" ordering (N-8-style lookup contradictions) |
+### 3B. AFTER running `01` (file 09)
+| Query | Question it answers |
+|---|---|
+| Q21, Q22 | master rows by first problem; split transactions with a problem on only some rows |
+| Q36 | master rows with no cost type |
+| Q42 | hire code but no hire exposure (expect 0) |
+| Q44 | dummy payees by reason |
+| Q46 | `PAYEE_CONTACT_OTHER_CLAIM` / `PAYEE_NO_CLAIMCONTACT` (N-18) |
+| `SELECT * FROM IS_PAYMENT_MASTER_MOTOR WHERE ExceptionCode = 'MULTIPLE_RESERVE_LINES'` | two reserve lines in one slot (N-10 senior) |
+| `SELECT * FROM IS_PAYMENT_MASTER_MOTOR WHERE WarnList LIKE '%DISS_SUM_MISMATCH%'` | total differs from sum of dissections (N-12) |
+### 3C. AFTER all procs (file 08)
+V1 (duplicate PublicIDs), V2 / V2b / V2c / V2d (missing parents, check payee role rows, all expected 0 rows), V3 (cardinality), V4, V5 (money), V6 (coverage), V7, V8, V9 / V9b / V9c (typecodes).
+### 3D. File 14
+T0c and T0d: typelist rows with NULL `[Household/Motor/Both]` or NULL `Vectus_TypeCode`.
+
+## PART 4 — Questions for the BA (ask in this order)
+| # | Question (id) | Query |
+|---|---|---|
+| 1 | One V2 payment that has both claim cost and expense dissections becomes 2 ClaimCenter payments. (a) Is it correct that both get the same check number `TRANS_REF`? (b) Mapping row 174 says no need to split, transcript line 56 says clone. Which one? (N-8) | Q8, Q22 |
+| 2 | `DoesNotErodeReserves`: TRUE or FALSE? Built as TRUE. (N-9) | none |
+| 3 | A credit on the claim itself (CASE KEY = CLAIM KEY) has no recovery reserve line. What should happen? (BA-1 / N-17; senior part S-A below) | Q11c, Q45 |
+| 4 | Transfer payments (`PAY_TYPE = 'T'`): which side carries which field? (BA-4) | Q19, Q35 |
+| 5 | V2 payment with no dissection row: one line, claim cost. Right? (BA-6) | Q2 |
+| 6 | Several PAID / PRESENTED / CANX status rows: built = latest by status `ID`. Right? (BA-10) | Q15 |
+| 7 | PA recoveries are not migrated (mapping row 136). Confirm, or where do they go? (BA-15) | Q11 |
+| 8 | Recovery coding: per recovery payment or per recovery reserve line? Built = per reserve line, reused. (BA-9) | none |
+| 9 | AD CASE without an AD exposure / PA CASE without PA exposure / TP CASE without TP exposure: create the exposure, send to claim level, or leave as load error? (N-2, N-3, N-4) | Q31, Q32, Q33 |
+| 10 | Is the Confluence rule (codes EXG, GOO, ISR, OLR ... at claim level; credit cost type by code) current? Mapping says the CASE decides. (N-5, N-6) | Q37, Q36 |
+| 11 | Dummy payee when the link row exists but has no CONTACT RECORD, or the CONTACT RECORD is not in the contact master: dummy payee + exception report (done). Confirm. And what for a contact that exists only on another claim, or has no claim contact row? (N-11, N-18) | Q17, Q44, Q46 |
+| 12 | Payment total differs from the sum of dissections: line items carry the dissection amounts. Right? (N-12) | DISS_SUM_MISMATCH query |
+| 13 | `checkpayee` role: one role row per payee and exposure (built), or one per payee for the whole claim? `Active` = 1 real payee, 0 dummy payee. (N-15) | none |
+| 14 | Hire: any credit with a hire code goes to the vehicle/property/injury recovery line (never hire). Right? (N-13b) | Q41 |
+| 15 | Open injury where the type 33 expense reserve is 0 but an expense payment exists: should an expense line be created? (N-20a / S-D) | Q12 |
+| 16 | Missing rows 202, 204, 205, 207, 212 in the main reserve line file: confirm they are not payment rows. | none |
+| 17 | Lookup rows missing for TP-only codes on non-TP CASES (N-1): code rule is built; do you want the rows added to the lookup instead? | Q30 |
+
+## PART 5 — Questions for the senior developer
+| # | Question | Query |
+|---|---|---|
+| S-A | Create the claim-level recovery line `pm_other_adm` when a credit sits on the claim itself (with BA question 3) | Q45 |
+| S-B | Add an `HDR` token (and `TP_HIRE` if ever needed) to the recovery coding proc; today the recovery PublicID would be NULL for a claim-level line | none |
+| S-C | `LUWID` is NULL on TP vehicle (B5) and reinsurance (B6) reserve lines: intended? | none |
+| S-E | Create the AD recovery line when a removed AD CASE of the claim has a credit (my proc moves it to the surviving AD CASE) | Q10, Q11b |
+| S-F | Confirm every TP CASE with one of the 12 hire codes always gets a `TP_HIRE` exposure | Q42 |
+| S-G | Send the remaining rows (28+) of `MOTOR_RESERVES_LOOKUP`; run `INFORMATION_SCHEMA.COLUMNS` on the real contact/address/claim contact tables | none |
+| N-10 | Which line is right if two reserve lines exist in one slot, or should the reserve proc never make two | MULTIPLE_RESERVE_LINES query |
+| N-10 old | recovery category text on the property recovery line | none |
+
+## PART 6 — Decided already (do NOT ask again)
+Vehicle, then property, then injury (BA-13, main reserve line column). Hire expense, `_hireexp` removed. TP-only code on a non-TP CASE uses the TP row with `IsHire` = 0 (N-1). `LineCategory` hard coded 'Migrated Payment' / 'Migrated Recovery'. `TRANS_REF` trimmed (kept). `UNMAPPED_PAYMENT_METHOD` only when `PayType` is not null (kept). Stop reason defaults to `issued_in_error` (mapping row 19). `PayeeDenormID` / `PayToDenorm` not loaded. `checkpayee` role is in role proc v7 step 5B. PA recoveries are the only rows not copied.
